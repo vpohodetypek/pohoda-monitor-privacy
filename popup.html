@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🎪 <span data-i18n="extTitle">Pohoda Monitor</span></h1>
+      <span class="badge" id="badge"></span>
+    </header>
+
+    <section class="status-bar">
+      <span class="status-left">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="monitorState" data-i18n="active">Aktívne</span>
+      </span>
+      <span class="status-right"><span data-i18n="lastCheck">Posledná kontrola:</span> <span id="lastCheck">--</span></span>
+    </section>
+
+    <section class="stat-row">
+      <div class="mini-stat">
+        <span class="mini-value" id="statToday">0</span>
+        <span class="mini-label" data-i18n="today">dnes</span>
+      </div>
+      <div class="mini-stat">
+        <span class="mini-value" id="statTotal">0</span>
+        <span class="mini-label" data-i18n="total">celkom</span>
+      </div>
+      <label class="pause-toggle" data-i18n-title="pauseTitle">
+        <input type="checkbox" id="monitorToggle" checked>
+        <span class="pause-label" data-i18n="monitoring">Monitorovanie</span>
+      </label>
+    </section>
+
+    <section class="last-post" id="lastPostSection">
+      <h2 data-i18n="latestPost">Najnovší príspevok</h2>
+      <div class="post-card">
+        <div class="post-header">
+          <span class="user" id="postUser">--</span>
+          <span class="date" id="postDate">--</span>
+        </div>
+        <p class="content" id="postContent" data-i18n="noPostsYet">Zatiaľ žiadne príspevky</p>
+      </div>
+    </section>
+
+    <div class="actions">
+      <button id="checkBtn" class="btn primary">
+        <span class="btn-text" data-i18n="checkNow">Skontrolovať</span>
+        <span class="spinner" id="spinner"></span>
+      </button>
+      <button id="openBtn" class="btn secondary" data-i18n="openWebparty">Otvoriť Webparty</button>
+    </div>
+
+    <section class="history" id="historySection">
+      <div class="history-header">
+        <h2 data-i18n="recentPosts">Nedávne príspevky</h2>
+        <button id="toggleHistory" class="link-btn" data-i18n="show">Zobraziť</button>
+      </div>
+      <ul class="history-list hidden" id="historyList"></ul>
+    </section>
+
+    <footer>
+      <button id="settingsBtn" class="link-btn">⚙ <span data-i18n="settings">Nastavenia</span></button>
+      <span class="footer-sep">·</span>
+      <button id="clearBtn" class="link-btn" data-i18n="clearBadge">Vymazať odznak</button>
+    </footer>
+  </div>
+
+  <script src="i18n.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

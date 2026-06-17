@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "Pohoda Webparty Monitor",
+  "version": "4.0.0",
+  "description": "Monitor new Webparty posts with keyword alerts, quiet hours, user blocking, post history and notification controls.",
+  "permissions": [
+    "storage",
+    "notifications",
+    "alarms",
+    "tabs",
+    "offscreen"
+  ],
+  "host_permissions": [
+    "https://www.pohodafestival.sk/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Pohoda Webparty Monitor"
+  },
+  "options_ui": {
+    "page": "settings.html",
+    "open_in_tab": true
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.pohodafestival.sk/webparty*"],
+      "js": ["i18n.js", "content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "128": "icons/pohodalogo.png"
+  }
+}

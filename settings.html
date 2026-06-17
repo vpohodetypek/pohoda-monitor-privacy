@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pohoda Monitor — Nastavenia</title>
+  <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+  <div class="page">
+    <header class="page-header">
+      <div class="brand">
+        <span class="brand-icon">🎪</span>
+        <div>
+          <h1 data-i18n="extTitle">Pohoda Monitor</h1>
+          <p class="subtitle" data-i18n="subtitleSettings">Nastavenia</p>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <!-- Language -->
+      <section class="card">
+        <h2 data-i18n="language">Jazyk</h2>
+        <div class="lang-switch">
+          <button type="button" class="lang-btn active" data-lang="sk" data-i18n="langSk">Slovenčina</button>
+          <button type="button" class="lang-btn" data-lang="en" data-i18n="langEn">English</button>
+        </div>
+      </section>
+
+      <!-- Monitoring -->
+      <section class="card">
+        <h2 data-i18n="monitoringSection">Monitorovanie</h2>
+        <p class="hint" data-i18n="monitoringHint">Ovládanie kontroly stránky Webparty na pozadí.</p>
+
+        <div class="field-row toggle-row no-border">
+          <label for="monitoringEnabled" data-i18n="monitoringActive">Monitorovanie aktívne</label>
+          <input type="checkbox" id="monitoringEnabled" class="toggle">
+        </div>
+        <p class="hint small" data-i18n="monitoringPauseHint">Vypnite pre úplné pozastavenie kontrol na pozadí.</p>
+
+        <div class="field-row" style="margin-top:16px;">
+          <label for="intervalSelect" data-i18n="checkEvery">Kontrolovať každých</label>
+          <select id="intervalSelect">
+            <option value="1">1 minútu</option>
+            <option value="2">2 minúty</option>
+            <option value="3">3 minúty</option>
+            <option value="5">5 minút</option>
+            <option value="10">10 minút</option>
+            <option value="15">15 minút</option>
+            <option value="30">30 minút</option>
+            <option value="60">1 hodinu</option>
+            <option value="custom">Vlastné…</option>
+          </select>
+        </div>
+        <div class="field-row hidden" id="customIntervalRow" style="margin-top:10px;">
+          <label for="customInterval" data-i18n="customInterval">Vlastné (minúty)</label>
+          <input type="number" id="customInterval" min="1" max="1440" step="1" class="num-input">
+        </div>
+      </section>
+
+      <!-- Notifications -->
+      <section class="card">
+        <h2 data-i18n="notificationsSection">Notifikácie</h2>
+        <p class="hint" data-i18n="notificationsHint">Nastavte, kedy a ako sa zobrazia desktopové notifikácie.</p>
+
+        <div class="field-row toggle-row">
+          <label for="notificationsEnabled" data-i18n="enableNotifications">Povoliť notifikácie</label>
+          <input type="checkbox" id="notificationsEnabled" class="toggle">
+        </div>
+
+        <div class="field-row toggle-row">
+          <label for="soundEnabled" data-i18n="enableSound">Zvuk pri novom príspevku</label>
+          <input type="checkbox" id="soundEnabled" class="toggle">
+        </div>
+
+        <div class="field-row toggle-row">
+          <label for="requireInteraction" data-i18n="requireInteraction">Ponechať na obrazovke do zavretia</label>
+          <input type="checkbox" id="requireInteraction" class="toggle">
+        </div>
+
+        <div class="field-row toggle-row">
+          <label for="notifyBlocked" data-i18n="notifyBlocked">Notifikovať aj blokovaných používateľov</label>
+          <input type="checkbox" id="notifyBlocked" class="toggle">
+        </div>
+
+        <div class="field-row toggle-row">
+          <label for="previewLength"><span data-i18n="previewLength">Dĺžka náhľadu</span> <span id="previewLengthValue" class="count-badge">150</span></label>
+          <input type="range" id="previewLength" min="40" max="300" step="10" class="range-input">
+        </div>
+
+        <div class="field-row toggle-row">
+          <label for="badgeColor" data-i18n="badgeColor">Farba odznaku</label>
+          <input type="color" id="badgeColor" class="color-input">
+        </div>
+
+        <div class="field-row toggle-row">
+          <label for="quietHoursEnabled" data-i18n="quietHours">Tiché hodiny (stlmiť notifikácie)</label>
+          <input type="checkbox" id="quietHoursEnabled" class="toggle">
+        </div>
+        <div class="field-row hidden" id="quietHoursRow" style="margin-top:10px;">
+          <label data-i18n="quietFromTo">Od / do</label>
+          <div class="time-range">
+            <input type="time" id="quietStart" class="time-input">
+            <span class="time-sep">→</span>
+            <input type="time" id="quietEnd" class="time-input">
+          </div>
+        </div>
+        <p class="hint small" data-i18n="quietWatchHint">Príspevky so sledovanými kľúčovými slovami stále notifikujú aj počas tichých hodín.</p>
+
+        <div class="backup-row" style="margin-top:14px;">
+          <button id="testNotifyBtn" class="btn secondary" data-i18n="testNotification">Otestovať notifikáciu</button>
+        </div>
+      </section>
+
+      <!-- Keywords -->
+      <section class="card">
+        <h2 data-i18n="keywordsSection">Kľúčové slová</h2>
+        <p class="hint" data-i18n="keywordsHint">Pridajte slová na zvýraznenie dôležitých príspevkov alebo skrytie nežiaducich. Enter pre pridanie.</p>
+
+        <h3 class="kw-title" data-i18n="watchKeywords">🔔 Sledované kľúčové slová</h3>
+        <p class="hint small" style="margin-bottom:8px;" data-i18n="watchHint">Príspevky s týmito slovami vždy notifikujú — aj počas tichých hodín — a sú zvýraznené na stránke.</p>
+        <div class="add-row">
+          <input type="text" id="watchInput" data-i18n-placeholder="watchPlaceholder" placeholder="napr. lístok, predám…" autocomplete="off" spellcheck="false">
+          <button id="addWatchBtn" class="btn primary" data-i18n="add">Pridať</button>
+        </div>
+        <div id="watchChips" class="chip-list"></div>
+
+        <h3 class="kw-title" style="margin-top:18px;" data-i18n="muteKeywords">🔕 Stlmené kľúčové slová</h3>
+        <p class="hint small" style="margin-bottom:8px;" data-i18n="muteHint">Príspevky s týmito slovami sú skryté na stránke a nikdy notifikujú.</p>
+        <div class="add-row">
+          <input type="text" id="muteInput" data-i18n-placeholder="mutePlaceholder" placeholder="napr. spam…" autocomplete="off" spellcheck="false">
+          <button id="addMuteBtn" class="btn secondary" data-i18n="add">Pridať</button>
+        </div>
+        <div id="muteChips" class="chip-list"></div>
+      </section>
+
+      <!-- Block users -->
+      <section class="card">
+        <h2 data-i18n="blockSection">Blokovanie používateľov</h2>
+        <p class="hint" data-i18n="blockHint">Blokovaní používatelia zostanú viditeľní (meno, avatar, dátum), ale text príspevku sa skryje. Môžete blokovať aj priamo na stránke cez tlačidlo ⊘.</p>
+
+        <div class="add-row">
+          <input type="text" id="manualUsername" data-i18n-placeholder="blockUsernamePlaceholder" placeholder="Zadajte meno na blokovanie…" autocomplete="off" spellcheck="false">
+          <button id="addBtn" class="btn primary" data-i18n="block">Blokovať</button>
+        </div>
+
+        <div class="discover-wrap">
+          <div class="discover-bar">
+            <input type="text" id="userSearch" data-i18n-placeholder="searchUsersPlaceholder" placeholder="Hľadať používateľov na Webparty…" autocomplete="off" spellcheck="false">
+            <button id="discoverBtn" class="btn secondary">
+              <span class="btn-label" data-i18n="loadFromWebparty">Načítať z Webparty</span>
+              <span class="spinner" id="discoverSpinner"></span>
+            </button>
+          </div>
+
+          <div id="discoverResults" class="discover-panel hidden" aria-hidden="true">
+            <div class="discover-panel-header">
+              <span id="discoverSummary"></span>
+              <button id="discoverClose" type="button" class="discover-close" title="×">×</button>
+            </div>
+            <div id="discoverList" class="discover-list"></div>
+          </div>
+        </div>
+
+        <div class="blocked-section">
+          <div class="blocked-header">
+            <h3><span data-i18n="blockedList">Zoznam blokovaných</span> <span id="blockedCount" class="count-badge">0</span></h3>
+            <button id="clearAllBtn" class="link-btn danger hidden" data-i18n="clearAll">Vymazať všetko</button>
+          </div>
+          <ul id="blockedList" class="blocked-list">
+            <li class="empty-state" data-i18n="noBlockedUsers">Zatiaľ žiadni blokovaní používatelia</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Stats & Backup -->
+      <section class="card">
+        <h2 data-i18n="statsSection">Štatistiky a záloha</h2>
+        <p class="hint" data-i18n="statsHint">Prehľad aktivity a záloha vašej konfigurácie.</p>
+
+        <div class="stat-grid">
+          <div class="stat-box">
+            <span class="stat-value" id="statTotal">0</span>
+            <span class="stat-label" data-i18n="postsDetected">Zistených príspevkov</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-value" id="statToday">0</span>
+            <span class="stat-label" data-i18n="statToday">Dnes</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-value" id="statBlocked">0</span>
+            <span class="stat-label" data-i18n="statBlocked">Blokovaných</span>
+          </div>
+        </div>
+
+        <div class="backup-row">
+          <button id="exportBtn" class="btn secondary" data-i18n="exportSettings">Exportovať nastavenia</button>
+          <button id="importBtn" class="btn secondary" data-i18n="importSettings">Importovať nastavenia</button>
+          <button id="resetBtn" class="btn ghost danger" data-i18n="resetAll">Obnoviť predvolené</button>
+        </div>
+        <input type="file" id="importFile" accept="application/json" hidden>
+      </section>
+    </main>
+
+    <footer class="page-footer">
+      <a href="https://www.pohodafestival.sk/webparty" target="_blank" rel="noopener" data-i18n="openWebparty">Otvoriť Webparty</a>
+    </footer>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="i18n.js"></script>
+  <script src="settings.js"></script>
+</body>
+</html>
