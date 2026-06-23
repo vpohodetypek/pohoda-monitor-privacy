@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Pohoda Webparty Monitor",
-  "version": "4.0.0",
+  "version": "4.0.11",
   "description": "Monitor new Webparty posts with keyword alerts, quiet hours, user blocking, post history and notification controls.",
   "permissions": [
     "storage",
@@ -26,7 +26,10 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://www.pohodafestival.sk/webparty*"],
+      "matches": [
+        "https://www.pohodafestival.sk/webparty",
+        "https://www.pohodafestival.sk/webparty*"
+      ],
       "js": ["i18n.js", "content.js"],
       "css": ["content.css"],
       "run_at": "document_idle"

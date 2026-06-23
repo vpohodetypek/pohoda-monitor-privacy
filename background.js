@@ -32,6 +32,18 @@ async function getSettings() {
   return settings;
 }
 
+async function ensureCheckAlarm() {
+  const existing = await chrome.alarms.get("checkPosts");
+  if (existing) return;
+
+  const { checkInterval } = await chrome.storage.local.get("checkInterval");
+  const minutes = Math.min(
+    Math.max(parseInt(checkInterval, 10) || DEFAULTS.checkInterval, 1),
+    1440
+  );
+  await chrome.alarms.create("checkPosts", { periodInMinutes: minutes });
+}
+
 // INIT — seed any missing defaults without clobbering existing values.
 chrome.runtime.onInstalled.addListener(async () => {
   const stored = await chrome.storage.local.get(SETTING_KEYS);
@@ -41,15 +53,15 @@ chrome.runtime.onInstalled.addListener(async () => {
   }
   if (Object.keys(toSet).length) await chrome.storage.local.set(toSet);
 
-  const interval = stored.checkInterval || DEFAULTS.checkInterval;
-  await chrome.alarms.create("checkPosts", { periodInMinutes: interval });
+  await ensureCheckAlarm();
   chrome.action.setBadgeBackgroundColor({ color: stored.badgeColor || DEFAULTS.badgeColor });
 
   runCheck();
 });
 
 // Check for new posts when browser starts
-chrome.runtime.onStartup.addListener(() => {
+chrome.runtime.onStartup.addListener(async () => {
+  await ensureCheckAlarm();
   runCheck();
 });
 
@@ -107,8 +119,8 @@ function extractPostFromHTML(html) {
     if (!post) continue;
 
     const isNewer =
-      post.timestamp > newestDate ||
-      (post.timestamp === newestDate && post.commentNum > newestCommentNum);
+      post.commentNum > newestCommentNum ||
+      (post.commentNum === newestCommentNum && post.timestamp > newestDate);
 
     if (isNewer) {
       newestPost = post;
@@ -258,62 +270,272 @@ function safeBase64(str) {
   }
 }
 
-async function reloadWebpartyTabs() {
-  try {
-    const tabs = await chrome.tabs.query({
-      url: ["https://www.pohodafestival.sk/webparty*"]
+const WEBPARTY_TAB_PATTERNS = [
+  "https://www.pohodafestival.sk/webparty",
+  "https://www.pohodafestival.sk/webparty*"
+];
+
+function isWebpartyUrl(url) {
+  return !!url && /^https:\/\/www\.pohodafestival\.sk\/webparty/i.test(url);
+}
+
+async function queryWebpartyTabs() {
+  const seen = new Map();
+  for (const pattern of WEBPARTY_TAB_PATTERNS) {
+    const tabs = await chrome.tabs.query({ url: pattern });
+    for (const tab of tabs) {
+      if (tab.id && isWebpartyUrl(tab.url)) seen.set(tab.id, tab);
+    }
+  }
+  return [...seen.values()];
+}
+
+function deliverPagePopupToTab(tabId, post, attempt = 0) {
+  if (!post?.id) return;
+
+  chrome.tabs.sendMessage(tabId, { type: "SHOW_PAGE_POPUP", post }, () => {
+    if (!chrome.runtime.lastError) return;
+
+    if (attempt < 12) {
+      setTimeout(() => deliverPagePopupToTab(tabId, post, attempt + 1), 200 + attempt * 150);
+      return;
+    }
+
+    console.warn("[Pohoda Monitor] Page popup delivery failed:", chrome.runtime.lastError.message);
+  });
+}
+
+function reloadWebpartyTab(tabId, popupPost) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      resolve();
+    };
+
+    const onUpdated = (updatedTabId, info) => {
+      if (updatedTabId !== tabId || info.status !== "complete") return;
+      if (popupPost) deliverPagePopupToTab(tabId, popupPost);
+      finish();
+    };
+
+    chrome.tabs.onUpdated.addListener(onUpdated);
+    chrome.tabs.reload(tabId, {}, () => {
+      if (chrome.runtime.lastError) {
+        console.warn("[Pohoda Monitor] Tab reload failed:", chrome.runtime.lastError.message);
+        finish();
+      }
     });
 
-    for (const tab of tabs) {
-      if (tab.id) chrome.tabs.reload(tab.id);
+    // Fallback if complete never fires (cached tab, etc.)
+    setTimeout(finish, 15000);
+  });
+}
+
+async function reloadWebpartyTabs(popupPost = null) {
+  try {
+    const tabs = await queryWebpartyTabs();
+
+    if (!tabs.length) {
+      if (popupPost) {
+        console.log("[Pohoda Monitor] No open Webparty tab — popup queued until you visit Webparty");
+      }
+      return;
     }
 
-    if (tabs.length) {
-      console.log(`[Pohoda Monitor] Reloaded ${tabs.length} Webparty tab(s)`);
-    }
+    await Promise.all(
+      tabs.map((tab) => (tab.id ? reloadWebpartyTab(tab.id, popupPost) : Promise.resolve()))
+    );
+
+    console.log(`[Pohoda Monitor] Reloaded ${tabs.length} Webparty tab(s)`);
   } catch (err) {
     console.warn("[Pohoda Monitor] Tab reload failed:", err);
   }
 }
 
+// Deliver queued in-page popup when user opens or navigates to Webparty.
+chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
+  if (info.status !== "complete" || !isWebpartyUrl(tab?.url)) return;
+
+  chrome.storage.local.get("pagePopupPost", ({ pagePopupPost }) => {
+    if (pagePopupPost?.id) deliverPagePopupToTab(tabId, pagePopupPost);
+  });
+});
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function webpartyFetchUrl() {
+  return `${TARGET_URL}?_=${Date.now()}`;
+}
+
+async function fetchWebpartyDirect(credentials = "omit") {
+  const response = await fetch(webpartyFetchUrl(), {
+    method: "GET",
+    credentials,
+    cache: "no-store",
+    headers: {
+      "Cache-Control": "no-cache",
+      Pragma: "no-cache"
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  return response.text();
+}
+
+async function fetchWebpartyViaTab() {
+  const tabs = await queryWebpartyTabs();
+
+  for (const tab of tabs) {
+    if (!tab.id) continue;
+
+    try {
+      const res = await chrome.tabs.sendMessage(tab.id, { type: "FETCH_WEBPARTY_HTML" });
+      if (res?.html) {
+        console.log("[Pohoda Monitor] Fetched via open Webparty tab");
+        return res.html;
+      }
+    } catch {
+      // Tab may not have a live content script yet.
+    }
+  }
+
+  return null;
+}
+
+async function fetchWebpartyViaHiddenTab() {
+  let tabId;
+
+  try {
+    const tab = await chrome.tabs.create({
+      url: webpartyFetchUrl(),
+      active: false
+    });
+    tabId = tab.id;
+    if (!tabId) return null;
+
+    const html = await new Promise((resolve) => {
+      let settled = false;
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        chrome.tabs.onUpdated.removeListener(onUpdated);
+        resolve(value);
+      };
+
+      const tryFetch = (attempt = 0) => {
+        chrome.tabs.sendMessage(tabId, { type: "FETCH_WEBPARTY_HTML" }, (res) => {
+          if (chrome.runtime.lastError || !res?.html) {
+            if (attempt < 15) {
+              setTimeout(() => tryFetch(attempt + 1), 200 + attempt * 120);
+              return;
+            }
+            finish(null);
+            return;
+          }
+          finish(res.html);
+        });
+      };
+
+      const onUpdated = (updatedTabId, info) => {
+        if (updatedTabId !== tabId || info.status !== "complete") return;
+        tryFetch();
+      };
+
+      chrome.tabs.onUpdated.addListener(onUpdated);
+      setTimeout(() => finish(null), 20000);
+    });
+
+    if (html) {
+      console.log("[Pohoda Monitor] Fetched via temporary Webparty tab");
+    }
+
+    return html;
+  } catch (err) {
+    console.warn("[Pohoda Monitor] Hidden tab fetch failed:", err);
+    return null;
+  } finally {
+    if (tabId) {
+      try {
+        await chrome.tabs.remove(tabId);
+      } catch {
+        // Tab may already be closed.
+      }
+    }
+  }
+}
+
+async function fetchWebpartyHtml() {
+  const errors = [];
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await sleep(700 * attempt);
+
+    for (const credentials of ["omit", "include"]) {
+      try {
+        return await fetchWebpartyDirect(credentials);
+      } catch (err) {
+        errors.push(`${credentials}: ${err.message}`);
+      }
+    }
+  }
+
+  const viaTab = await fetchWebpartyViaTab();
+  if (viaTab) return viaTab;
+
+  const viaHiddenTab = await fetchWebpartyViaHiddenTab();
+  if (viaHiddenTab) return viaHiddenTab;
+
+  throw new Error(errors.join("; ") || "Failed to fetch");
+}
+
+let checkInFlight = false;
+const processingPostIds = new Set();
+
 // MAIN CHECK FUNCTION - USES FETCH (NO TAB OPENING!)
 async function runCheck() {
+  if (checkInFlight) {
+    console.log("[Pohoda Monitor] Check already running — skipped");
+    return;
+  }
+
+  checkInFlight = true;
   try {
     const { monitoringEnabled = true } = await chrome.storage.local.get("monitoringEnabled");
     if (!monitoringEnabled) {
       console.log("[Pohoda Monitor] Monitoring paused — skipping check");
+      await chrome.storage.local.set({ lastCheck: Date.now() });
       return;
     }
 
     console.log("[Pohoda Monitor] Checking for new posts...");
-    
-    const response = await fetch(TARGET_URL, {
-      method: "GET",
-      credentials: "include",
-      cache: "no-store",
-      headers: {
-        "Accept": "text/html,application/xhtml+xml",
-        "Cache-Control": "no-cache"
-      }
-    });
 
-    if (!response.ok) {
-      console.warn("[Pohoda Monitor] Fetch failed:", response.status);
-      return;
-    }
-
-    const html = await response.text();
+    const html = await fetchWebpartyHtml();
     const post = extractPostFromHTML(html);
 
     if (!post) {
       console.warn("[Pohoda Monitor] No post found on page");
+      await chrome.storage.local.set({ lastCheck: Date.now(), lastCheckError: "no_post_found" });
       return;
     }
 
+    await chrome.storage.local.remove("lastCheckError");
     await processPost(post);
-    
   } catch (err) {
     console.error("[Pohoda Monitor] Check error:", err);
+    await chrome.storage.local.set({
+      lastCheck: Date.now(),
+      lastCheckError: String(err.message || err)
+    });
+  } finally {
+    checkInFlight = false;
   }
 }
 
@@ -331,7 +553,12 @@ function bumpStats(stats) {
 }
 
 // PROCESS EXTRACTED POST DATA
-async function processPost(post) {
+async function processPost(post, opts = {}) {
+  if (!post?.id) return;
+
+  if (processingPostIds.has(post.id)) return;
+  processingPostIds.add(post.id);
+
   try {
     const settings = await getSettings();
     const { lastPostId, count = 0, postHistory = [] } =
@@ -375,53 +602,65 @@ async function processPost(post) {
     // Update statistics.
     await chrome.storage.local.set({ stats: bumpStats(settings.stats) });
 
-    // Decide whether to alert (shared rules for notification + sound).
+    // Decide whether to alert (shared rules for notification + sound + badge + popup).
     const allowedByBlock = !blocked || settings.notifyBlocked;
     const shouldAlert = !muted && allowedByBlock && (watched || !quiet);
     const shouldNotifyDesktop = shouldAlert && settings.notificationsEnabled;
     const shouldPlaySound = shouldAlert && settings.soundEnabled;
 
+    if (shouldAlert) {
+      await updateBadge(count + 1, settings.badgeColor);
+    }
+
     if (shouldNotifyDesktop) {
-      notify(post, { watched, previewLength: settings.previewLength, requireInteraction: settings.requireInteraction });
-      const newCount = count + 1;
-      chrome.action.setBadgeText({ text: String(newCount) });
-      await chrome.storage.local.set({ count: newCount });
+      await notify(post, { watched, previewLength: settings.previewLength, requireInteraction: settings.requireInteraction });
     }
 
     if (shouldPlaySound) {
       playNotificationSound();
     }
 
-    if (!shouldNotifyDesktop && !shouldPlaySound) {
+    if (!shouldAlert) {
       const reason = muted
         ? "muted keyword"
         : blocked && !settings.notifyBlocked
           ? "blocked user"
           : quiet && !watched
             ? "quiet hours"
-            : !settings.notificationsEnabled && !settings.soundEnabled
-              ? "notifications and sound off"
-              : "unknown";
+            : "unknown";
       console.log(`[Pohoda Monitor] Skipped alert — ${reason}`);
+    } else if (!shouldNotifyDesktop && !shouldPlaySound) {
+      console.log("[Pohoda Monitor] Badge updated — desktop notification and sound off");
     }
+
+    const pagePopupPost = shouldAlert
+      ? {
+          id: post.id,
+          user: post.user,
+          date: post.date,
+          content: post.content,
+          watched,
+          at: Date.now()
+        }
+      : null;
 
     await chrome.storage.local.set({
       lastPostId: post.id,
       highlightPostId: post.id,
-      pagePopupPost: !muted && allowedByBlock
-        ? {
-            id: post.id,
-            user: post.user,
-            date: post.date,
-            content: post.content,
-            watched,
-            at: Date.now()
-          }
-        : null
+      pagePopupPost
     });
-    await reloadWebpartyTabs();
+
+    if (opts.skipTabReload) {
+      if (pagePopupPost && opts.sourceTabId) {
+        deliverPagePopupToTab(opts.sourceTabId, pagePopupPost);
+      }
+    } else {
+      await reloadWebpartyTabs(pagePopupPost);
+    }
   } catch (err) {
     console.error("[Pohoda Monitor] Process error:", err);
+  } finally {
+    processingPostIds.delete(post.id);
   }
 }
 
@@ -430,6 +669,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === "MANUAL_CHECK") {
     runCheck().then(() => sendResponse({ success: true }));
     return true; // Keep channel open for async response
+  }
+
+  if (msg.type === "REPORT_NEW_POST" && msg.post?.id) {
+    processPost(msg.post, {
+      skipTabReload: true,
+      sourceTabId: sender.tab?.id
+    }).then(() => sendResponse({ success: true }));
+    return true;
   }
   
   if (msg.type === "GET_STATUS") {
@@ -471,8 +718,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.type === "CLEAR_BADGE") {
-    chrome.action.setBadgeText({ text: "" });
-    chrome.storage.local.set({ count: 0 }).then(() => sendResponse({ success: true }));
+    updateBadge(0).then(() => sendResponse({ success: true }));
     return true;
   }
 
@@ -493,6 +739,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 // NOTIFICATION SOUND (via offscreen document — service workers cannot play audio)
+async function updateBadge(count, color) {
+  const next = Math.max(0, parseInt(count, 10) || 0);
+  await chrome.action.setBadgeBackgroundColor({ color: color || DEFAULTS.badgeColor });
+  await chrome.action.setBadgeText({ text: next > 0 ? String(next) : "" });
+  await chrome.storage.local.set({ count: next });
+}
+
 async function playNotificationSound(opts = {}) {
   const settings = await getSettings();
   if (!opts.force && settings.soundEnabled === false) return;
@@ -535,25 +788,29 @@ function notify(post, opts = {}) {
     type: "basic",
     iconUrl: chrome.runtime.getURL("icons/pohodalogo.png"),
     title: `${watched ? "🔔 " : ""}${post.user}`,
-    message: `${post.date}\n\n${preview}`,
+    message: `${post.date} — ${preview}`,
     priority: 2,
     requireInteraction: !!requireInteraction
   };
 
-  chrome.notifications.create(notificationId, options, () => {
-    if (chrome.runtime.lastError) {
-      console.error("[Pohoda Monitor] Notification failed:", chrome.runtime.lastError.message);
-      const { iconUrl, ...fallback } = options;
-      chrome.notifications.create(`${notificationId}_fallback`, fallback, () => {
-        if (chrome.runtime.lastError) {
-          console.error("[Pohoda Monitor] Notification fallback failed:", chrome.runtime.lastError.message);
-        } else {
-          console.log("[Pohoda Monitor] Notification shown (no icon)");
-        }
-      });
-      return;
-    }
-    console.log("[Pohoda Monitor] Notification shown:", notificationId);
+  return new Promise((resolve) => {
+    chrome.notifications.create(notificationId, options, () => {
+      if (chrome.runtime.lastError) {
+        console.error("[Pohoda Monitor] Notification failed:", chrome.runtime.lastError.message);
+        const { iconUrl, ...fallback } = options;
+        chrome.notifications.create(`${notificationId}_fallback`, fallback, () => {
+          if (chrome.runtime.lastError) {
+            console.error("[Pohoda Monitor] Notification fallback failed:", chrome.runtime.lastError.message);
+          } else {
+            console.log("[Pohoda Monitor] Notification shown (no icon)");
+          }
+          resolve();
+        });
+        return;
+      }
+      console.log("[Pohoda Monitor] Notification shown:", notificationId);
+      resolve();
+    });
   });
 }
 
@@ -572,7 +829,12 @@ chrome.notifications.onClicked.addListener((notificationId) => {
 });
 
 // CLOSE NOTIFICATION → CLEAR BADGE (user read it)
-chrome.notifications.onClosed.addListener(() => {
+chrome.notifications.onClosed.addListener((notificationId) => {
+  if (!String(notificationId || "").startsWith("pohoda_")) return;
   chrome.action.setBadgeText({ text: "" });
   chrome.storage.local.set({ count: 0 });
+});
+
+ensureCheckAlarm().catch((err) => {
+  console.warn("[Pohoda Monitor] Failed to ensure alarm:", err);
 });

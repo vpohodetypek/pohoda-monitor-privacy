@@ -136,7 +136,13 @@ const I18N = {
     testNotification: "Otestovať notifikáciu",
     popupNewPost: "Nový príspevok",
     popupDismiss: "Zavrieť",
-    popupGoToPost: "Prejsť na príspevok"
+    popupGoToPost: "Prejsť na príspevok",
+    pinTitle: "Pripnúť vlákno navrch",
+    unpinTitle: "Odopnúť vlákno",
+    badgePinned: "📌 pripnuté",
+    replyingTo: "Odpovedáte na príspevok",
+    replyLoading: "Načítavam pôvodný príspevok…",
+    replyNotFound: "Pôvodný príspevok sa nepodarilo načítať."
   },
   en: {
     badgeLatest: "✦ latest",
@@ -275,7 +281,13 @@ const I18N = {
     testNotification: "Test notification",
     popupNewPost: "New post",
     popupDismiss: "Dismiss",
-    popupGoToPost: "Go to post"
+    popupGoToPost: "Go to post",
+    pinTitle: "Pin thread to top",
+    unpinTitle: "Unpin thread",
+    badgePinned: "📌 pinned",
+    replyingTo: "Replying to",
+    replyLoading: "Loading original post…",
+    replyNotFound: "Could not load the original post."
   }
 };
 
